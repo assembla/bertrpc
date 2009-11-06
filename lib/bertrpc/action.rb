@@ -12,8 +12,40 @@ module BERTRPC
 
     def execute
       bert_request = encode_ruby_request(t[@req.kind, @mod, @fun, @args])
-      bert_response = transaction(bert_request)
-      decode_bert_response(bert_response)
+
+      transaction(bert_request) do |sock, bert_response|
+        response = decode_bert_response(bert_response)
+
+        if response.is_a?(StringIO)
+          if @svc.stream.nil?
+            raise "Service stream must be set"
+          end
+
+          # skip empty reply
+          reply = decode_bert_response read_response(sock)
+
+          total = 0
+
+          #read stream
+          loop do
+            len = sock.read(4).unpack("N").first
+            break if len == 0
+
+            chunk_size = 4 * 1024
+
+            while len > 0
+              c = len > chunk_size ? chunk_size : len
+              total += c
+              @svc.stream.write sock.read(c)
+              len -= c
+            end
+          end
+
+          return total
+        else
+          return response
+        end
+      end
     end
 
     #private
@@ -35,17 +67,21 @@ module BERTRPC
       end
 
       write(sock, bert_request)
+      yield sock, read_response(sock)
+      sock.close
+    rescue Errno::ECONNREFUSED
+      raise ConnectionError.new("Unable to connect to #{@svc.host}:#{@svc.port}")
+    rescue Timeout::Error
+      raise ReadTimeoutError.new("No response from #{@svc.host}:#{@svc.port} in #{@svc.timeout}s")
+    end
+
+    def read_response(sock)
       lenheader = sock.read(4)
       raise ProtocolError.new(ProtocolError::NO_HEADER) unless lenheader
       len = lenheader.unpack('N').first
       bert_response = sock.read(len)
       raise ProtocolError.new(ProtocolError::NO_DATA) unless bert_response
-      sock.close
       bert_response
-    rescue Errno::ECONNREFUSED
-      raise ConnectionError.new("Unable to connect to #{@svc.host}:#{@svc.port}")
-    rescue Timeout::Error
-      raise ReadTimeoutError.new("No response from #{@svc.host}:#{@svc.port} in #{@svc.timeout}s")
     end
 
     # Creates a socket object which does speedy, non-blocking reads

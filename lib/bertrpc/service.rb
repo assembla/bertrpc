@@ -1,6 +1,8 @@
 module BERTRPC
   class Service
     attr_accessor :host, :port, :timeout
+    # For streaming, object must respond to write method
+    attr_accessor :stream
 
     def initialize(host, port, timeout = nil)
       @host = host
