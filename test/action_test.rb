@@ -23,7 +23,7 @@ class ActionTest < Test::Unit::TestCase
       req = @enc.encode_ruby_request(t[:call, :mymod, :myfun, [1]])
       res = @enc.encode_ruby_request(t[:reply, 2])
       call = BERTRPC::Action.new(@svc, @req, :mymod, :myfun, [1])
-      call.expects(:transaction).with(req).returns(res)
+      call.expects(:transaction).with(req).yields(nil, res)
       assert_equal 2, call.execute
     end
 
@@ -31,7 +31,7 @@ class ActionTest < Test::Unit::TestCase
       req = @enc.encode_ruby_request(t[:call, :mymod, :myfun, [[1, 2, 3]]])
       res = @enc.encode_ruby_request(t[:reply, [4, 5, 6]])
       call = BERTRPC::Action.new(@svc, @req, :mymod, :myfun, [[1, 2, 3]])
-      call.expects(:transaction).with(req).returns(res)
+      call.expects(:transaction).with(req).yields(nil, res)
       assert_equal [4, 5, 6], call.execute
     end
 
@@ -39,7 +39,7 @@ class ActionTest < Test::Unit::TestCase
       req = @enc.encode_ruby_request(t[:call, :mymod, :myfun, [1, 2, 3]])
       res = @enc.encode_ruby_request(t[:reply, [4, 5, 6]])
       call = BERTRPC::Action.new(@svc, @req, :mymod, :myfun, [1, 2, 3])
-      call.expects(:transaction).with(req).returns(res)
+      call.expects(:transaction).with(req).yields(nil, res)
       assert_equal [4, 5, 6], call.execute
     end
 
@@ -58,7 +58,9 @@ class ActionTest < Test::Unit::TestCase
         io.expects(:read).with(3).returns("bar")
         io.expects(:close)
         @call.expects(:connect_to).returns(io)
-        assert_equal "bar", @call.transaction("foo")
+        @call.transaction("foo") do |sock, resp|
+          assert_equal "bar", resp
+        end
       end
 
       should "raise a ProtocolError when the length is invalid" do
