@@ -96,13 +96,15 @@ class ActionTest < Test::Unit::TestCase
         io = stub()
         io.expects(:write).with("\000\000\000\003")
         io.expects(:write).with("foo")
-        io.expects(:read).with(4).raises(Timeout::Error)
+        io.expects(:read).with(4).raises(Errno::EAGAIN)
         @call.expects(:connect_to).returns(io)
         begin
           @call.transaction("foo")
           fail "Should have thrown an error"
         rescue BERTRPC::ReadTimeoutError => e
           assert_equal 0, e.code
+          assert_equal 'localhost', e.host
+          assert_equal 9941, e.port
         end
       end
     end

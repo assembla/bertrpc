@@ -71,8 +71,8 @@ module BERTRPC
       sock.close
     rescue Errno::ECONNREFUSED
       raise ConnectionError.new("Unable to connect to #{@svc.host}:#{@svc.port}")
-    rescue Timeout::Error
-      raise ReadTimeoutError.new("No response from #{@svc.host}:#{@svc.port} in #{@svc.timeout}s")
+    rescue Errno::EAGAIN
+      raise ReadTimeoutError.new(@svc.host, @svc.port, @svc.timeout)
     end
 
     def read_response(sock)
@@ -93,9 +93,18 @@ module BERTRPC
     #   +port+ Integer port of the target TCP server
     #   +timeout+ Optional Integer (in seconds) of the read timeout
     def connect_to(host, port, timeout = nil)
-      io = BufferedIO.new(TCPSocket.new(host, port))
-      io.read_timeout = timeout
-      io
+      sock = TCPSocket.new(host, port)
+      sock.setsockopt Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1
+
+      if timeout
+        secs = Integer(timeout)
+        usecs = Integer((timeout - secs) * 1_000_000)
+        optval = [secs, usecs].pack("l_2")
+        sock.setsockopt Socket::SOL_SOCKET, Socket::SO_RCVTIMEO, optval
+        sock.setsockopt Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, optval
+      end
+
+      sock
     end
   end
 end
